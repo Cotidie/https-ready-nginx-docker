@@ -37,6 +37,28 @@ sequenceDiagram
     Script->>Nginx: Reload Nginx
 ```
 
+```mermaid
+sequenceDiagram
+    title HTTPS Certificate Renewal Flow (Periodic)
+
+    participant Script as Entrypoint.sh
+    participant Certbot
+    participant Nginx
+    participant LE as Let's Encrypt
+
+    Note over Script: Periodic Job (every 12h)
+
+    Script->>Certbot: Check renewal
+
+    alt Cert near expiry
+        Certbot->>LE: Renew certificate
+        LE-->>Certbot: New certificate issued
+        Certbot->>Nginx: Reload Nginx (post-hook)
+    else Cert still valid
+        Note over Certbot: No action
+    end
+```
+
 - **Default SSL:** Automatically installs Let's Encrypt certificates inside container
 - **Auto-Renewal:** Crontab schedule checks for TLS renewals every 12 hours and reloads Nginx automatically.
 - **Persistence:** Keeps certificates persistent in Docker Volume
