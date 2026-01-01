@@ -4,6 +4,37 @@ This Nginx based docker automates the process of issueing and renewal of SSL cer
 
 ## Features
 
+```mermaid
+sequenceDiagram
+    participant Script as Entrypoint.sh
+    participant OpenSSL
+    participant Nginx
+    participant Certbot
+    participant LE as Let's Encrypt
+
+    Note over Script: Container Startup
+
+    Script->>Script: Check existing TLS cert
+
+    alt No cert found
+        Script->>OpenSSL: Generate dummy cert
+        OpenSSL-->>Script: Dummy cert ready
+    end
+
+    Script->>Nginx: Start Nginx
+
+    Script->>Certbot: Request cert (webroot)
+    Certbot->>LE: Start ACME validation
+
+    LE->>Nginx: HTTP challenge
+    Nginx-->>LE: Serve challenge
+
+    LE-->>Certbot: Issue certificate
+    Certbot-->>Script: Store cert
+
+    Script->>Nginx: Reload Nginx
+```
+
 - **Default SSL:** Automatically installs Let's Encrypt certificates inside container
 - **Auto-Renewal:** Crontab schedule checks for TLS renewals every 12 hours and reloads Nginx automatically.
 - **Persistence:** Keeps certificates persistent in Docker Volume
