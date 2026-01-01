@@ -6,6 +6,8 @@ This Nginx based docker automates the process of issueing and renewal of SSL cer
 
 ```mermaid
 sequenceDiagram
+    title HTTPS Certificate Issuance Flow (Nginx + Certbot)
+
     participant Script as Entrypoint.sh
     participant OpenSSL
     participant Nginx
