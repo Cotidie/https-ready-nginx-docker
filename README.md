@@ -1,17 +1,19 @@
 # HTTPS-Ready Nginx Docker
 
-An Nginx Docker image with default HTTPS via Let's Encrypt. It starts with a temporary self-signed certificate and swaps to a valid Let's Encrypt certificate in the background, storing the certificates in a mounted volume.
+This Nginx based docker automates the process of issueing and renewal of SSL certificates using `certbot` and `letsencrypt`. It works by starting Nginx immediately with a temporary self-signed certificat (`openssl`) then requests a valid certificate from Let's Encrypt.
 
 ## Features
 
 - **Default SSL:** Automatically installs Let's Encrypt certificates inside container
 - **Auto-Renewal:** Crontab schedule checks for TLS renewals every 12 hours and reloads Nginx automatically.
 - **Persistence:** Keeps certificates persistent in Docker Volume
+    - `certbot_conf`: Let's Encrypt certificates.
+    - `certbot_www`: ACME challenge files.
 
 ## Prerequisites
 
-- Docker
-- Docker Compose
+- Docker and Docker Compose
+- A running server with public IP
 
 ## Quick Start
 
@@ -41,13 +43,8 @@ An Nginx Docker image with default HTTPS via Let's Encrypt. It starts with a tem
 
 | Variable | Description | Required |
 |----------|-------------|:--------:|
-| `DOMAIN` | The primary domain name for the certificate. | Yes |
+| `DOMAIN` | The domain name for the certificate. | Yes |
 | `SUBDOMAINS` | Comma-separated list of subdomains (e.g., `www,api`). | No |
 | `SSL_EMAIL` | Email address for Let's Encrypt registration and recovery. | Yes |
 
-## Volumes
-
-- `./nginx.conf`: Mounted as a template to `/etc/nginx/conf.d/default.conf.template`.
-- `certbot_conf`: Let's Encrypt certificates.
-- `certbot_www`: ACME challenge files.
 
