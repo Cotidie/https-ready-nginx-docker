@@ -72,7 +72,7 @@ sequenceDiagram
 
 ## Quick Start
 
-1. **Clone the repository**
+1. **Clone the repository** on your public server
    ```bash
    git clone <repository-url>
    cd https-ready-nginx-docker
