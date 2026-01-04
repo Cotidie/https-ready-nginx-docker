@@ -12,7 +12,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
       - ./snippets:/etc/nginx/snippets
-      - ./apps:/etc/nginx/apps
+      - ./subdomains:/etc/nginx/subdomains
 
       # Persist Certbot data
       - certbot_conf:/etc/letsencrypt
