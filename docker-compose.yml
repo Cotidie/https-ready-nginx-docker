@@ -5,15 +5,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    
-    # Load environment variables
+
     env_file:
       - .env
-      
+
     volumes:
-      # Mount the TEMPLATE, not the final config
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf.template
-      
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./snippets:/etc/nginx/snippets
+      - ./apps:/etc/nginx/apps
+
       # Persist Certbot data
       - certbot_conf:/etc/letsencrypt
       - certbot_www:/var/www/certbot
@@ -26,4 +26,5 @@ services:
 volumes:
   certbot_conf:
   certbot_www:
+
 

@@ -1,60 +1,63 @@
 #!/bin/bash
 
-#
-# Entrypoint script for Nginx + Certbot container.
-#
-# Responsibilities:
-# - Build domain list from DOMAIN and optional SUBDOMAINS
-# - Generate a temporary self-signed certificate if no valid cert exists
-# - Start Nginx using the dummy certificate
-# - Request a real Let's Encrypt certificate via Certbot (webroot)
-# - Swap in the real certificate and reload Nginx
-# - Run a background auto-renewal
-#
-# This script is designed to be run inside docker container
-#
-
-
 set -e
 
-SSL_DIR="/etc/nginx/ssl"
-WEBROOT="/var/www/certbot"
-CERTBOT_BASE="/etc/letsencrypt/live"
+if [ -z "$SSL_DOMAIN" ]; then
+    log_error "SSL_DOMAIN environment variable is not set."
+    exit 1
+fi
 
-#######################################
-# Domain handling
-#######################################
-build_domains() {
-    local domains="$DOMAIN"
+# ==============================================================================
+# Configuration
+# ==============================================================================
+readonly SSL_DIR="/etc/nginx/ssl"
+readonly WEBROOT="/var/www/certbot"
+readonly CERTBOT_BASE="/etc/letsencrypt/live"
+readonly CERTBOT_DIR="$CERTBOT_BASE/$SSL_DOMAIN"
 
-    if [ -n "$SUBDOMAINS" ]; then
-        for sub in $(echo "$SUBDOMAINS" | tr ',' ' '); do
-            domains="$domains $sub.$DOMAIN"
+# ==============================================================================
+# Logging Helpers
+# ==============================================================================
+log_info() {
+    echo "[INFO] $1"
+}
+
+log_error() {
+    echo "[ERROR] $1" >&2
+}
+
+# ==============================================================================
+# Environment Validation & Domain Logic
+# ==============================================================================
+build_domain_list() {
+    local domains="$SSL_DOMAIN"
+
+    if [ -n "$SSL_SUBDOMAINS" ]; then
+        local subs=$(echo "$SSL_SUBDOMAINS" | tr ',' ' ')
+        for sub in $subs; do
+            domains="$domains $sub.$SSL_DOMAIN"
         done
     fi
-
     echo "$domains"
 }
 
-#######################################
-# Filesystem prep
-#######################################
-prepare_dirs() {
+# ==============================================================================
+# Infrastructure Setup
+# ==============================================================================
+ensure_directories() {
     mkdir -p "$SSL_DIR" "$WEBROOT"
 }
 
-#######################################
-# Certificate helpers
-#######################################
-certbot_dir() {
-    echo "$CERTBOT_BASE/$DOMAIN"
+# ==============================================================================
+# Certificate Management
+# ==============================================================================
+is_cert_available() {
+    [ -d "$CERTBOT_DIR" ] && \
+    [ -f "$CERTBOT_DIR/fullchain.pem" ] && \
+    [ -f "$CERTBOT_DIR/privkey.pem" ]
 }
 
-has_real_cert() {
-    [ -d "$(certbot_dir)" ]
-}
-
-link_cert() {
+link_certificate() {
     local crt="$1"
     local key="$2"
 
@@ -62,96 +65,97 @@ link_cert() {
     ln -sf "$key" "$SSL_DIR/current.key"
 }
 
-generate_dummy_cert() {
-    openssl req -x509 -nodes -newkey rsa:4096 -days 1 \
-        -keyout "$SSL_DIR/dummy.key" \
-        -out "$SSL_DIR/dummy.crt" \
-        -subj "/CN=localhost"
-}
-
-setup_initial_cert() {
-    if has_real_cert; then
-        echo "Using existing Let's Encrypt certificate"
-        link_cert "$(certbot_dir)/fullchain.pem" "$(certbot_dir)/privkey.pem"
-        return
-    fi
-
+create_dummy_certificate() {
     if [ ! -f "$SSL_DIR/current.crt" ]; then
-        echo "Generating dummy certificate"
-        generate_dummy_cert
-        link_cert "$SSL_DIR/dummy.crt" "$SSL_DIR/dummy.key"
+        log_info "Generating dummy self-signed certificate..."
+        openssl req -x509 -nodes -newkey rsa:4096 -days 1 \
+            -keyout "$SSL_DIR/dummy.key" \
+            -out "$SSL_DIR/dummy.crt" \
+            -subj "/CN=localhost" \
+            2>/dev/null
+        
+        link_certificate "$SSL_DIR/dummy.crt" "$SSL_DIR/dummy.key"
     fi
 }
 
-#######################################
-# Nginx
-#######################################
-render_nginx_conf() {
-    export DOMAIN NGINX_SERVER_NAMES
-    envsubst '${NGINX_SERVER_NAMES} ${DOMAIN}' \
-        < /etc/nginx/conf.d/default.conf.template \
-        > /etc/nginx/conf.d/default.conf
+request_lets_encrypt_cert() {
+    local domain_list=$(build_domain_list)
+    log_info "Requesting Let's Encrypt certificate for: $domain_list"
+    
+    # Construct argument array for safer handling
+    local certbot_args=(
+        "certonly"
+        "--webroot"
+        "-w" "$WEBROOT"
+        "--email" "$SSL_EMAIL"
+        "--rsa-key-size" "4096"
+        "--agree-tos"
+        "--non-interactive"
+    )
+
+    for domain in $domain_list; do
+        certbot_args+=("-d" "$domain")
+    done
+
+    if certbot "${certbot_args[@]}"; then
+        return 0
+    else
+        log_error "Certbot request failed."
+        return 1
+    fi
 }
 
+start_renewal_loop() {
+    log_info "Starting renewal loop..."
+    (
+        while true; do
+            sleep 12h
+            certbot renew \
+                --webroot -w "$WEBROOT" \
+                --quiet \
+                --deploy-hook "nginx -s reload"
+        done
+    ) &
+}
+
+# ==============================================================================
+# Nginx Control
+# ==============================================================================
 start_nginx() {
+    log_info "Starting Nginx..."
     nginx -g "daemon off;" &
-    echo $!
+    NGINX_PID=$!
 }
 
 reload_nginx() {
+    log_info "Reloading Nginx configuration..."
     nginx -s reload
 }
 
-#######################################
-# Certbot
-#######################################
-request_cert() {
-    echo "Requesting Let's Encrypt certificate..."
-    certbot certonly \
-        --webroot -w "$WEBROOT" \
-        -d "$DOMAIN" \
-        --email "$SSL_EMAIL" \
-        --rsa-key-size 4096 \
-        --agree-tos \
-        --non-interactive
-}
-
-renew_loop() {
-    while true; do
-        sleep 12h
-        certbot renew \
-            --webroot -w "$WEBROOT" \
-            --quiet \
-            --deploy-hook "nginx -s reload"
-    done
-}
-
-#######################################
-# Main
-#######################################
+# ==============================================================================
+# Main Orchestrator
+# ==============================================================================
 main() {
-    NGINX_SERVER_NAMES="$(build_domains)"
-    export NGINX_SERVER_NAMES
+    ensure_directories
+    create_dummy_certificate
+    
+    start_nginx
+    sleep 5
 
-    prepare_dirs
-    setup_initial_cert
-    render_nginx_conf
-
-    echo "Starting nginx for: $NGINX_SERVER_NAMES"
-    NGINX_PID=$(start_nginx)
-
-    if ! has_real_cert; then
-        sleep 5
-        if request_cert && has_real_cert; then
-            echo "Switching to real certificate"
-            link_cert "$(certbot_dir)/fullchain.pem" "$(certbot_dir)/privkey.pem"
+    if is_cert_available; then
+        log_info "Found existing Let's Encrypt certificate for $SSL_DOMAIN"
+        link_certificate "$CERTBOT_DIR/fullchain.pem" "$CERTBOT_DIR/privkey.pem"
+    else
+        if request_lets_encrypt_cert; then
+            log_info "Switching to real certificate..."
+            link_certificate "$CERTBOT_DIR/fullchain.pem" "$CERTBOT_DIR/privkey.pem"
             reload_nginx
         else
-            echo "WARNING: Certbot failed, continuing with dummy cert"
+            log_error "Failed to obtain real certificate. Continuing with dummy certificate."
         fi
     fi
-
-    renew_loop &
+    
+    start_renewal_loop
     wait "$NGINX_PID"
 }
 
