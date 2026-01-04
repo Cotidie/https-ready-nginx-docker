@@ -78,16 +78,21 @@ sequenceDiagram
    cd https-ready-nginx-docker
    ```
 
-2. **Configure Environment**
+2. **Configure Environment** for SSL certificates
    Edit a `.env` file in the root directory:
    ```bash
-   DOMAIN=example.com
-   # Optional: Comma separated subdomains
-   SUBDOMAINS=www,api
-   SSL_EMAIL=admin@example.com
+   SSL_DOMAIN=example.com
+   SSL_SUBDOMAINS=www,api
+   SSL_EMAIL=cotidie@kaist.ac.kr
    ```
 
-3. **Run**
+3. **Configure Nginx**
+   - **Main Domain:** Edit `nginx.conf` and replace `<your domain>` with your actual domain name (e.g., `example.com`).
+   - **Subdomains:** Place any subdomain configurations (like `api.example.com`) in the `apps/` directory.
+     - You can find examples in the `subdomains/` folder.
+     - Ensure your subdomain config files end with `.conf`.
+
+4. **Run**
    ```bash
    docker-compose up -d
    ```
@@ -98,8 +103,8 @@ sequenceDiagram
 
 | Variable | Description | Required |
 |----------|-------------|:--------:|
-| `DOMAIN` | The domain name for the certificate. | Yes |
-| `SUBDOMAINS` | Comma-separated list of subdomains (e.g., `www,api`). | No |
+| `SSL_DOMAIN` | The domain name for the certificate. | Yes |
+| `SSL_SUBDOMAINS` | Comma-separated list of subdomains (e.g., `www,api`). | No |
 | `SSL_EMAIL` | Email address for Let's Encrypt registration and recovery. | Yes |
 
 
