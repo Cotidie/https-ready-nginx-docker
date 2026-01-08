@@ -145,6 +145,7 @@ main() {
     if is_cert_available; then
         log_info "Found existing Let's Encrypt certificate for $SSL_DOMAIN"
         link_certificate "$CERTBOT_DIR/fullchain.pem" "$CERTBOT_DIR/privkey.pem"
+        reload_nginx
     else
         if request_lets_encrypt_cert; then
             log_info "Switching to real certificate..."
